@@ -1,242 +1,214 @@
-# tiny-repl — Interactive Debugging REPL for AI Agent Pipelines
+# tiny-repl
 
-> **Replay steps, diff runs, inspect state, export traces — built for the agent-first debugging workflow.**
+> **Interactive debugging REPL for AI agent pipelines.**
+> Replay agent runs step-by-step, diff two executions, inspect state, export traces as JSON or markdown. Zero dependencies.
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](tiny_repl.py)
-[![Part of the tiny-* ecosystem](https://img.shields.io/badge/tiny--*-ecosystem-purple.svg)](#ecosystem)
+[![MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-green.svg)](https://python.org)
 
-When a multi-step agent fails at step 47, you need to understand what happened — replay that step, diff against a working run, inspect the output. Current solution: print statements + manual log grep. tiny-repl: first-class debugging.
+---
 
-## The Problem
+## Why tiny-repl?
 
-Agents do dozens or hundreds of tool calls. When something goes wrong:
-- "Which step failed?" → grep logs manually
-- "What was the input at step 23?" → search log files
-- "How does this run differ from the working one?" → compare log files by eye
-- "Can I replay step 23?" → re-run the whole thing
+When an autonomous agent runs for 20 minutes and fails, you don't want to grep through 500 tool calls in a log file. You want to **step through the execution like a debugger**, jump to the failure, diff it against a successful run, and export a clean trace for the report.
 
-tiny-repl solves this with a debugging-first design: trace, replay, inspect, diff.
+`tiny-repl` is the tool for that. It was built for the autonomous agent workflow — the kind where a script owns an issue end-to-end and you need to understand what it did after the fact.
 
-## Installation
-
-```bash
-# Copy tiny_repl.py into your project — that's it.
-# Zero dependencies.
-```
+---
 
 ## Quick Start
 
-### 1. Trace Your Agent
+### Install
+
+```bash
+pip install tiny-repl
+```
+
+Or just copy the file — it's one Python file, no dependencies:
+
+```bash
+curl -O https://raw.githubusercontent.com/hussain-alsaibai/tiny-repl/main/tiny_repl.py
+```
+
+### Trace an agent (programmatic)
 
 ```python
-from tiny_repl import start_trace, record, end_trace, wrap
+from tiny_repl import start_trace, record, end_trace
 
 # Start tracing
-run_id = start_trace(agent_name="bounty-hunter", prompt="Find XSS in repo")
+run_id = start_trace("my-agent", "Fix the auth bug in login.py")
 
-# ... run your agent, recording each step:
-record("web_search", {"query": "fastapi xss"}, output={"results": [...]})
-record("read_file", {"path": "routes.py"}, output="def login(req): ...")
-record("write_file", {"path": "fix.py"}, output="✅ Saved")
+# ... your agent runs tools ...
+record("read_file", {"path": "auth.py"}, output={"lines": 42})
+record("write_file", {"path": "auth.py"}, output="done")
 
-# ... if something fails:
-try:
-    result = await agent.run()
-    end_trace("completed", final_output=result)
-except Exception as exc:
-    end_trace("failed", error=str(exc))
+# End trace
+run = end_trace(status="completed", final_output="Bug fixed")
+print(f"Run saved: {run.run_id}")
 ```
 
-### 2. Replay Interactively
+### Replay in interactive REPL
+
+```bash
+$ tiny-repl
+tiny-repl> list runs
+  abc12345 — my-agent (14 steps, completed)
+  def67890 — my-agent (18 steps, failed)
+tiny-repl> replay abc12345
+tiny-repl> n           # step forward
+tiny-repl> n           # step forward again
+tiny-repl> call 5      # inspect step 5 detail
+tiny-repl> find error  # find steps with "error"
+tiny-repl> stats       # show run statistics
+```
+
+### Diff two runs
 
 ```python
-from tiny_repl import replay, interact
+from tiny_repl import diff_runs
 
-session = replay("abc12345")  # Load a run
-interact(session)            # Drop into REPL
-```
-
-```
-tiny-repl — Run abc12345 (bounty-hunter)
-Status: completed | Steps: 23
-Current step: 0
-============================================================
-tiny-repl> n
-→ Step 0:
-  [  0] ✓ web_search (142.3ms)
-       Input: {"query": "fastapi xss"}
-       → {"results": [...]}
-
-tiny-repl> n
-→ Step 1:
-  [  1] ✓ read_file (12.1ms)
-       Input: {"path": "routes.py"}
-       → def login(req): ...
-
-tiny-repl> call 15
-  [ 15] ✗ git_commit (231.4ms)
-       ERROR: git: command not found
-       Input: {"message": "fix: XSS in login", "files": [...]}
-
-tiny-repl> find "error"
-  [ 15] ✗ git_commit (231.4ms)
-       ERROR: git: command not found
-```
-
-### 3. Diff Two Runs
-
-```python
-from tiny_repl import get_engine
-
-engine = get_engine()
-diff = engine.diff("run-a1b2c3", "run-d4e5f6")
+diff = diff_runs("abc12345", "def67890")
 print(diff)
 ```
 
-```
-============================================================
-STEP 15
-============================================================
-[RUN A] git_commit({"message": "fix: XSS in login", ...})
-  → ✅ Committed (sha: abc123)
-[RUN B] git_commit({"message": "fix: XSS in login", ...})
-  ERROR: git: command not found
-  ⚠️  Output differs
-```
+### Export as markdown
 
-## Key Features
-
-### Trace Everything
 ```python
-from tiny_repl import get_tracer, wrap, trace_async
+from tiny_repl import export_run
 
-tracer = get_tracer("my-agent")
-tracer.start_run("my-agent", "Analyze codebase")
+md = export_run("abc12345", format="markdown")
+print(md)
+```
 
-# Manual recording
-tracer.record_call("read_file", {"path": "main.py"}, output=content)
+---
 
-# Or wrap any async function
+## Concepts
+
+### `AgentRun`
+A complete record of one agent execution: the prompt, all tool calls, final output, error, and metadata.
+
+### `ToolCall`
+A single step in an agent run: which tool was called, its input, output, duration, and any error.
+
+### `TraceStore`
+File-based persistence. Traces are saved as `~/.tiny-repl-traces/{run_id}.json`. An index file tracks all runs.
+
+### `LiveTracer`
+Instruments a running agent. Wraps async functions, auto-records duration and errors.
+
+### `ReplayEngine`
+Loads runs from the store, diffs two runs step-by-step, exports traces.
+
+### `InteractiveREPL`
+Terminal UI for stepping through a run. Commands: `n`/`p` (step forward/back), `goto N`, `call N`, `find`, `stats`, `diff`, `export`.
+
+---
+
+## API Reference
+
+### Tracing
+
+```python
+start_trace(agent_name: str, prompt: str) -> str
+    # Start a new trace. Returns run_id.
+
+record(name: str, inp: dict, output: Any = None,
+       error: str = None, duration_ms: float = 0.0)
+    # Record a tool call in the active trace.
+
+async trace_async(name: str, inp: dict, func: Callable, *args, **kwargs) -> Any
+    # Wrap an async function call: records entry, duration, and error automatically.
+
+end_trace(status: str = "completed",
+          final_output: Any = None, error: str = None) -> AgentRun | None
+    # Finalize and save the trace.
+
 @wrap
-async def web_search(query: str):
-    return await search_api(query)
-
-# Or use trace_async for timing
-async def main():
-    result = await trace_async(
-        "llm_call",
-        {"model": "gpt-4o-mini", "prompt": "..."},
-        llm.generate,
-        prompt="...",
-    )
+async def my_tool(input):
+    # Decorator that auto-traces any async function.
+    return await actual_tool(input)
 ```
 
-### Auto-Trace Your Agent Framework
+### Replay
+
 ```python
-# Patch your agent's tool execution to auto-trace:
-async def execute_tool(name, input):
-    tracer = get_tracer()
-    start = time.perf_counter()
-    try:
-        result = await actual_execute(name, input)
-        ms = (time.perf_counter() - start) * 1000
-        tracer.record_call(name, input, result, duration_ms=ms)
-        return result
-    except Exception as exc:
-        ms = (time.perf_counter() - start) * 1000
-        tracer.record_call(name, input, None, error=traceback.format_exc(), duration_ms=ms)
-        raise
+replay(run_id: str) -> ReplSession | None
+    # Load a run and return a steppable session.
+
+interact(session: ReplSession)
+    # Start interactive REPL with a session.
+
+list_runs(limit: int = 20) -> list[dict]
+    # List recent runs from the index.
+
+diff_runs(run_id_a: str, run_id_b: str) -> str
+    # Step-by-step diff of two runs.
+
+export_run(run_id: str, format: str = "json") -> str
+    # Export as JSON or markdown.
 ```
 
-### Export & Share
+### Convenience
+
 ```python
-# JSON (for programmatic use)
-json_data = engine.export(run_id, "json")
-
-# Markdown (for human reading / GitHub issues)
-md_report = engine.export(run_id, "markdown")
+get_tracer(agent_name: str = "agent") -> LiveTracer
+get_engine() -> ReplayEngine
+get_store(path: str | None) -> TraceStore
 ```
 
-### List Recent Runs
-```python
-from tiny_repl import list_runs
+---
 
-for run in list_runs(limit=20):
-    print(f"{run['run_id']} — {run['agent_name']} "
-          f"({run['step_count']} steps, {run['status']})")
-```
-
-## REPL Commands
+## Repl Commands
 
 | Command | Alias | Description |
 |---------|-------|-------------|
 | `next`, `n` | | Step forward one tool call |
 | `prev`, `p` | | Step backward one tool call |
 | `goto <N>` | | Jump to step N |
-| `current`, `c` | | Show current step detail |
-| `list`, `l` | | List all steps (→ = current, ● = breakpoint) |
-| `call <N>` | | Full detail of step N |
+| `current`, `c` | | Show current step |
+| `list`, `l` | | List all steps with markers |
+| `call <N>` | | Show full detail of step N |
 | `diff <A> <B>` | | Diff step A vs step B |
-| `watch <expr>` | | Watch an expression |
 | `find <term>` | | Find steps matching term |
-| `replay <id>` | | Load a different run |
-| `export [json/md]` | | Export run |
+| `stats` | | Show run statistics |
+| `watch <expr>` | | Watch a variable expression |
+| `replay [id]` | | Load a different run |
+| `export [fmt]` | | Export as json/markdown |
 | `break <N>` | | Set breakpoint at step N |
 | `run` | | Run to next breakpoint or end |
-| `stats` | | Show run statistics |
 | `help` | `?` | Show help |
-
-## Architecture
-
-```
-tiny-repl has three layers:
-
-1. LiveTracer      → instruments your running agent
-2. TraceStore      → persists runs as JSON files
-3. ReplayEngine    → loads, replays, diffs, exports
-
-Command-line REPL sits on top:
-4. InteractiveREPL  → interactive debugging interface
-```
-
-Traces are stored as:
-```
-.tiny-repl-traces/
-  abc12345.json     # Full run data
-  def67890.json
-  .index.jsonl       # Run metadata index
-```
-
-## Use Cases
-
-### Bounty Hunting
-Trace every step of your bug bounty agent. When it finds something, export the full trace as a markdown report for the bug submission.
-
-### Code Review
-Run your code review agent twice — before and after a fix. Diff the traces to see exactly what changed.
-
-### CI/CD Integration
-Run agent traces in CI. On failure, attach the trace JSON to the CI artifact. Review later without re-running.
-
-### Learning
-Watch how an agent solves a problem. Step through each tool call. See where it goes wrong.
-
-## Ecosystem
-
-Part of the **tiny-\*** ecosystem — zero-dependency Python utilities:
-
-| Repo | Description |
-|------|-------------|
-| [tiny-agent](https://github.com/hussain-alsaibai/tiny-agent) | Agent framework in one file |
-| [tiny-trace](https://github.com/hussain-alsaibai/tiny-trace) | Distributed tracing |
-| [tiny-checkpoint](https://github.com/hussain-alsaibai/tiny-checkpoint) | Agent suspend/resume |
-| [tiny-mesh](https://github.com/hussain-alsaibai/tiny-mesh) | Service mesh proxy |
-| [tiny-llm-router](https://github.com/hussain-alsaibai/tiny-llm-router) | Multi-provider LLM routing |
-| [fast-cache](https://github.com/hussain-alsaibai/fast-cache) | LRU + TTL cache |
-| [dev-masterkit](https://github.com/hussain-alsaibai/dev-masterkit) | Curated dev tools |
 
 ---
 
-*MIT License. https://github.com/hussain-alsaibai/tiny-repl*
+## Trace Storage
+
+By default, traces are stored in `~/.tiny-repl-traces/`:
+
+```
+~/.tiny-repl-traces/
+├── .index.jsonl          # Run index (one JSON line per run)
+└── {run_id}.json        # Full run data
+```
+
+Set `TINY_REPL_PATH` env var or pass a path to `TraceStore(path)` to override.
+
+---
+
+## Performance
+
+- Single-file, ~800 LOC, **zero dependencies** (stdlib only)
+- ~10 KB — no install overhead
+- Sync and async APIs
+- Persistent index for fast run lookup
+
+---
+
+## Related
+
+- [tiny-workflow](https://github.com/hussain-alsaibai/tiny-workflow) — DAG orchestrator with retry, persistence, approval gates
+- [tiny-trace](https://github.com/hussain-alsaibai/tiny-trace) — Distributed tracing with zero dependencies
+- [tiny-otel](https://github.com/hussain-alsaibai/tiny-otel) — OpenTelemetry-compatible spans without the SDK
+
+---
+
+MIT © 2026 Hussain Al-Saibai

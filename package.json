@@ -1,0 +1,46 @@
+{
+  "name": "tiny-repl",
+  "version": "1.0.0",
+  "description": "Interactive debugging REPL for AI agent pipelines. Replay runs, diff executions, inspect state, export traces. Zero dependencies.",
+  "readme": "README.md",
+  "license": "MIT",
+  "keywords": [
+    "agent",
+    "repl",
+    "debugging",
+    "tracing",
+    "ai",
+    "llm",
+    "workflow",
+    "observability",
+    "trace"
+  ],
+  "authors": [
+    {
+      "name": "Hussain Alsaibai",
+      "email": "hussain.alsaibai@gmail.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hussain-alsaibai/tiny-repl"
+  },
+  "classifiers": [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Testing"
+  ],
+  "requiresPython": ">=3.9",
+  "entry_points": {
+    "console_scripts": [
+      "tiny-repl=tiny_repl.__main__:main"
+    ]
+  }
+}
