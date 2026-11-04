@@ -108,7 +108,7 @@ class TestToolCall:
             name="read_file",
             input={"path": "missing.py"},
             output=None,
-            error="FileNotFoundError",
+            error="File not found: missing.py",
             duration_ms=10.0,
         )
         assert call.error is not None

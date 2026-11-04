@@ -102,8 +102,20 @@ class ReplSession:
         return None
 
     def current(self) -> ToolCall | None:
-        if 0 <= self.current_step < len(self.run.tool_calls):
-            return self.run.tool_calls[self.current_step]
+        """The call the session is sitting on, or None when there is none.
+
+        current_step is the index of the *next* call to run, so the call the
+        user is looking at is the one before it. Before any stepping has
+        happened there is no current call, which is what the CLI prints as
+        "No current step."
+
+        The old implementation returned tool_calls[current_step], which made
+        current() return the FIRST call before anything had been stepped. The
+        REPL then showed a call the user had not reached yet, and the
+        'No current step.' branch was unreachable.
+        """
+        if 0 < self.current_step <= len(self.run.tool_calls):
+            return self.run.tool_calls[self.current_step - 1]
         return None
 
 
